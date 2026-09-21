@@ -1,0 +1,38 @@
+name: cyberalps
+services:
+  app:
+    image: cyberalps:${CYBERALPS_REVISION:?A tested Git revision is required}
+    pull_policy: never
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.50
+    pids_limit: 64
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    environment:
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set the canonical HTTPS domain}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set the owner password}
+      TRUST_PROXY: "1"
+    volumes:
+      - cyberalps_data:/data
+    networks:
+      edge:
+        aliases: [cyberalps-app]
+    logging:
+      driver: json-file
+      options:
+        max-size: 5m
+        max-file: "2"
+
+volumes:
+  cyberalps_data:
+    name: cyberalps_data
+networks:
+  edge:
+    external: true
+    name: cyberalps_edge

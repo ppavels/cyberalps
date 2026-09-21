@@ -1,0 +1,12 @@
+[Unit]
+Description=Check CyberAlps for a tested Git release
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=2min
+RandomizedDelaySec=15s
+Persistent=true
+Unit=cyberalps-update.service
+
+[Install]
+WantedBy=timers.target

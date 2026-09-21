@@ -1,0 +1,19 @@
+{
+  "name": "cyberalps",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build && vite build --ssr src/entry-server.jsx --outDir dist/ssr && node scripts/prerender.mjs",
+    "test": "python3 -m unittest discover -s tests -v",
+    "start": "python3 -m app.server"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "6.1.1",
+    "vite": "8.3.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "lucide-react": "1.47.0"
+  }
+}

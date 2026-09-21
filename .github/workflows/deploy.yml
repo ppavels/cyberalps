@@ -1,0 +1,100 @@
+name: Verify and publish
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cyberalps-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm test
+      - run: npm run build
+      - run: npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund playwright@1.62.1
+      - run: npx playwright install --with-deps chromium
+      - name: Browser checks
+        run: |
+          TRUST_PROXY=1 python3 -m app.server > /tmp/cyberalps-ci.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:3002/api/health; then break; fi
+            sleep 1
+          done
+          node tests/browser.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-and-mobile
+          path: reports/
+          retention-days: 14
+      - name: Build and smoke-test production image
+        env:
+          REVISION: ${{ github.sha }}
+        run: |
+          docker build --build-arg REVISION="$REVISION" --tag "cyberalps:$REVISION" .
+          docker run -d --name cyberalps-check --memory 256m --memory-swap 256m --cpus 0.5 --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp:rw,size=16m --mount type=volume,dst=/data "cyberalps:$REVISION"
+          trap 'docker rm -fv cyberalps-check' EXIT
+          for attempt in $(seq 1 20); do
+            if docker exec cyberalps-check python -c 'import json, os, urllib.request; d=json.load(urllib.request.urlopen("http://127.0.0.1:3002/api/health", timeout=2)); assert d["revision"] == os.environ["CYBERALPS_REVISION"]'; then break; fi
+            sleep 2
+          done
+          docker exec cyberalps-check python -c 'import urllib.request; assert b"Sicher." in urllib.request.urlopen("http://127.0.0.1:3002/de/", timeout=2).read()'
+          docker save "cyberalps:$REVISION" | gzip -1 > cyberalps-image.tar.gz
+          sha256sum cyberalps-image.tar.gz > cyberalps-image.tar.gz.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: production-image
+          path: |
+            cyberalps-image.tar.gz
+            cyberalps-image.tar.gz.sha256
+          retention-days: 3
+
+  publish:
+    needs: verify
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: production-image
+      - name: Publish tested image and promote deploy branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ github.sha }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="build-$REVISION"
+          if ! gh release view "$tag" > /dev/null 2>&1; then
+            gh release create "$tag" --target "$REVISION" --title "Build $REVISION" --notes "Tested production image. Downloads are verified by SHA-256 before deployment." --latest=false cyberalps-image.tar.gz cyberalps-image.tar.gz.sha256
+          fi
+          git fetch origin main
+          if [ "$(git rev-parse origin/main)" != "$REVISION" ]; then
+            echo 'A newer commit exists. This build will not be deployed.'
+            exit 0
+          fi
+          git push origin "$REVISION:refs/heads/deploy"

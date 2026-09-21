@@ -1,0 +1,10 @@
+node_modules
+dist/
+data/
+reports/
+__pycache__/
+*.pyc
+.env
+.env.production
+*.tar.gz
+.DS_Store
