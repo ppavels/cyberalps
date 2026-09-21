@@ -1,6 +1,6 @@
 # CyberAlps
 
-A responsive Alpine Dark website with German and English pages, a passive website checker and a private contact-request inbox. Built for the existing small Netcup VPS alongside Preisli.
+A responsive Alpine Dark website with German and English pages, a passive website checker and a private contact-request inbox. An independent project hosted on a small Netcup VPS.
 
 ## What is included
 
@@ -54,7 +54,7 @@ The first GitHub CI run passed all 19 Python tests, both languages at all three 
 
 See [deploy/INTEGRATION.md](deploy/INTEGRATION.md). Builds happen in GitHub Actions. The VPS downloads the tested image and never runs npm or a frontend build. No server SSH key needs to be stored in GitHub Actions.
 
-The confirmed hostname is **cyberalps.ch**, on the Preisli VPS at **185.183.157.51**. The versioned integration uses Preisli's existing Caddy and a one-time BetRadar bootstrap; CyberAlps has its own updater afterward. CI must pass before a revision is installed.
+The hostname is **cyberalps.ch**, server **185.183.157.51**. CyberAlps has its own installer, service account, container, database, backups, CI and update timer. It neither invokes another project nor waits for another project’s tests. The existing Caddy is only the shared HTTPS entrypoint.
 
 ## Data and limits
 
@@ -62,7 +62,7 @@ The confirmed hostname is **cyberalps.ch**, on the Preisli VPS at **185.183.157.
 - Contact requests: 30 days, accessible only to the administrator.
 - Private deployment backups: up to seven days, at most seven snapshots.
 - Application container: 256 MiB, 0.5 CPU, no swap, no host ports.
-- Only the existing Caddy and CyberAlps share `cyberalps_edge`; the Preisli database network stays separate.
+- Only the shared HTTPS proxy and CyberAlps use `cyberalps_edge`; other application networks stay separate.
 
 The privacy page describes the implementation's data handling. Add verified operator identity and business contact details before a commercial launch; none have been invented.
 

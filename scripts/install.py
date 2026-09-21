@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-time installation on the existing Preisli VPS, from a reviewed Git checkout."""
+"""Install CyberAlps independently on its Netcup VPS from a reviewed Git checkout."""
 import argparse
 import json
 import os
@@ -9,6 +9,7 @@ import re
 import secrets
 import shutil
 import subprocess
+import sys
 
 ROOT = Path('/opt/cyberalps')
 STATE = Path('/var/lib/cyberalps-deploy')
@@ -31,7 +32,7 @@ def main():
     if run('hostname').split('.')[0] != 'v2202609399387523829':
         addresses = json.loads(run('ip', '-json', 'address', 'show'))
         if not any(a.get('local') == '185.183.157.51' for device in addresses for a in device.get('addr_info', [])):
-            parser.error('Unexpected host. This installer targets the Preisli VPS only.')
+            parser.error('Unexpected host. This installer targets 185.183.157.51 only.')
     for program in ['git', 'docker', 'curl', 'systemctl', 'runuser']:
         if not shutil.which(program):
             parser.error('Required program missing: ' + program)
@@ -78,9 +79,13 @@ def main():
     run('systemctl', 'enable', '--now', 'cyberalps-update.timer')
     run('systemctl', 'is-enabled', '--quiet', 'cyberalps-update.timer')
     run('systemctl', 'is-active', '--quiet', 'cyberalps-update.timer')
-    run('systemctl', 'start', '--no-block', 'cyberalps-update.service')
-    print('CyberAlps timer installed. Credentials are in /opt/cyberalps/.env.production (mode 0600).')
-    print('The existing Caddy requires the reviewed Git changes described in deploy/INTEGRATION.md.')
+    print('Installing the tested image through the CyberAlps updater...', flush=True)
+    run('systemctl', 'start', 'cyberalps-update.service')
+    print('CyberAlps installed. Credentials: /opt/cyberalps/.env.production (mode 0600).')
+    print('Checking the public site and its actual deployed revision...', flush=True)
+    revision = (STATE / 'deployed').read_text().strip()
+    subprocess.run([sys.executable, str(ROOT / 'scripts/verify_live.py')], check=True,
+                   env={**os.environ, 'EXPECTED_REVISION': revision, 'ROLLOUT_ATTEMPTS': '6'})
 
 
 if __name__ == '__main__':

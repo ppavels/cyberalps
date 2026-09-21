@@ -98,3 +98,13 @@ jobs:
             exit 0
           fi
           git push origin "$REVISION:refs/heads/deploy"
+      - name: Remove the completed temporary DNS diagnostic branch
+        run: |
+          ref=refs/heads/diagnostics/rollout
+          expected=84e8d8a3974cfd0a1f65785e6cc6964dea8917c8
+          actual="$(git ls-remote origin "$ref" | cut -f1)"
+          if [ "$actual" = "$expected" ]; then
+            git push --force-with-lease="$ref:$expected" origin ":$ref"
+          elif [ -n "$actual" ]; then
+            echo 'Diagnostic branch changed; preserving it for review.'
+          fi

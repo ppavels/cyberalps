@@ -1,4 +1,4 @@
-name: Verify live CyberAlps and Preisli
+name: Verify live CyberAlps
 on:
   workflow_dispatch:
   push:
@@ -9,7 +9,7 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

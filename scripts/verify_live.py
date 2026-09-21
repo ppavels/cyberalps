@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only verification of the public deployment and the shared private site."""
+"""Verify the independent CyberAlps deployment and run an audit of our own site."""
 import json
 import os
 import socket
@@ -31,13 +31,7 @@ def check():
         assert b'__PUBLIC_ORIGIN__' not in body and b'https://cyberalps.ch/' in body
     code, headers, body = request('https://cyberalps.ch/admin')
     assert code == 401, 'The request inbox must require authentication'
-    code, headers, body = request('https://preisli.ch/')
-    assert code == 401, 'Preisli must remain private'
-    assert 'noindex' in {k.lower(): v for k, v in headers.items()}.get('x-robots-tag', '')
-    code, headers, body = request('https://preisli.ch/robots.txt')
-    assert code == 200 and b'Disallow: /' in body
-    assert request('https://preisli.ch/sitemap.xml')[0] == 410
-    print('PASS: cyberalps.ch HTTPS, exact revision, DE/EN, private inbox and Preisli privacy.', flush=True)
+    print('PASS: cyberalps.ch HTTPS, exact revision, DE/EN and private inbox.', flush=True)
 
 
 def check_own_audit():
@@ -63,13 +57,14 @@ def check_own_audit():
 
 if __name__ == '__main__':
     last = None
-    for attempt in range(60):
+    attempts = int(os.environ.get('ROLLOUT_ATTEMPTS', '12'))
+    for attempt in range(attempts):
         try:
             check()
             break
         except (OSError, ValueError, AssertionError, RuntimeError) as error:
             last = str(error)
-            print(f'Waiting for rollout ({attempt + 1}/60): {last}', flush=True)
+            print(f'Waiting for rollout ({attempt + 1}/{attempts}): {last}', flush=True)
             time.sleep(10)
     else:
         raise SystemExit('Live verification did not complete: ' + str(last))

@@ -1,0 +1,14 @@
+cyberalps.ch {
+    encode zstd gzip
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        -Server
+    }
+    reverse_proxy cyberalps-app:3002 {
+        header_up X-Real-IP {remote_host}
+        transport http {
+            dial_timeout 5s
+            response_header_timeout 15s
+        }
+    }
+}
