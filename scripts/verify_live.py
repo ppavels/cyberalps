@@ -25,7 +25,7 @@ def check():
         raise RuntimeError('The confirmed IPv4 address is missing from DNS: ' + ', '.join(addresses))
     code, headers, body = request('https://cyberalps.ch/api/health')
     assert code == 200 and json.loads(body).get('revision') == EXPECTED, 'Waiting for the expected CyberAlps revision'
-    for lang, text in [('de', b'Sicher.'), ('en', b'Secure.')]:
+    for lang, text in [('de', b'Ihre neue Website.'), ('en', b'Your next website.')]:
         code, headers, body = request(f'https://cyberalps.ch/{lang}/')
         assert code == 200 and text in body, 'The language page is not ready'
         assert b'__PUBLIC_ORIGIN__' not in body and b'https://cyberalps.ch/' in body

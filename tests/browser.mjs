@@ -15,6 +15,8 @@ try {
       await page.goto(`http://127.0.0.1:3002/${language}/`, { waitUntil: 'networkidle' });
       assert.equal(await page.locator('h1').count(), 1);
       assert.ok(await page.locator('#url').isVisible());
+      assert.equal(await page.locator('.hero input').count(), 0);
+      assert.equal(await page.locator('.hero-buttons button').count(), 1);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}/${language} overflows`);
       await page.screenshot({ path: `reports/${name}-${language}.png`, fullPage: true });
       if (width < 760) {
@@ -23,7 +25,7 @@ try {
         assert.equal(await page.locator('nav.open').count(), 1);
         await page.locator('nav button').click();
       } else {
-        await page.locator('nav button').click();
+        await page.locator('.hero-buttons button').click();
       }
       await page.locator('dialog[open]').waitFor();
       await page.locator('input[name="name"]').fill('CI Test Client');
@@ -38,8 +40,8 @@ try {
       await page.locator('#url').fill('http://127.0.0.1');
       await page.locator('.audit-form input[type="checkbox"]').check();
       await page.locator('.audit-form button').click();
-      await page.locator('.hero-copy [role="alert"]').waitFor();
-      assert.match(await page.locator('.hero-copy [role="alert"]').innerText(), /public HTTP/);
+      await page.locator('.audit-copy [role="alert"]').waitFor();
+      assert.match(await page.locator('.audit-copy [role="alert"]').innerText(), /public HTTP/);
       assert.deepEqual(errors, [], `${name}/${language} JavaScript errors`);
       await context.close();
     }
