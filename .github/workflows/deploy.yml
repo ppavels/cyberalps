@@ -57,7 +57,7 @@ jobs:
             if docker exec cyberalps-check python -c 'import json, os, urllib.request; d=json.load(urllib.request.urlopen("http://127.0.0.1:3002/api/health", timeout=2)); assert d["revision"] == os.environ["CYBERALPS_REVISION"]'; then break; fi
             sleep 2
           done
-          docker exec cyberalps-check python -c 'import urllib.request; assert b"Ihre neue Website." in urllib.request.urlopen("http://127.0.0.1:3002/de/", timeout=2).read()'
+          docker exec cyberalps-check python -c 'import urllib.request; assert b"Wir entwickeln Websites" in urllib.request.urlopen("http://127.0.0.1:3002/de/", timeout=2).read()'
           docker save "cyberalps:$REVISION" | gzip -1 > cyberalps-image.tar.gz
           sha256sum cyberalps-image.tar.gz > cyberalps-image.tar.gz.sha256
       - uses: actions/upload-artifact@v4
