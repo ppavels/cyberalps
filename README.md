@@ -48,13 +48,13 @@ The tests cover private-address and redirect rejection, DNS pinning/TLS host ver
 
 CI additionally checks English and German at 1440, 390 and 320 pixel widths, hydration errors, mobile navigation and real local form submissions. It saves screenshots as a workflow artifact and smoke-tests the production container with its memory limit before promoting the `deploy` branch. Playwright is pinned as a CI-only tool and is not included in the runtime image.
 
-Current local verification: frontend production build and Python tests pass. Browser screenshots, Docker execution and the live VPS rollout remain unverified until the workflow can run. This environment has no Docker and its cloud browser cannot access the local preview.
+The first GitHub CI run passed all 19 Python tests, both languages at all three viewport sizes, real local form submissions and the production Docker smoke test with a 256 MiB limit. Screenshots are attached to [the workflow run](https://github.com/ppavels/cyberalps/actions/runs/35629320579). Live VPS rollout is checked separately.
 
 ## Deployment
 
 See [deploy/INTEGRATION.md](deploy/INTEGRATION.md). Builds happen in GitHub Actions. The VPS downloads the tested image and never runs npm or a frontend build. No server SSH key needs to be stored in GitHub Actions.
 
-The exact hostname is still required to enable deployment. Integration changes to the existing Preisli and BetRadar repositories have not been applied. CI must pass before installing it on the VPS.
+The confirmed hostname is **cyberalps.ch**, on the Preisli VPS at **185.183.157.51**. The versioned integration uses Preisli's existing Caddy and a one-time BetRadar bootstrap; CyberAlps has its own updater afterward. CI must pass before a revision is installed.
 
 ## Data and limits
 

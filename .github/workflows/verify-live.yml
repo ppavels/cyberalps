@@ -1,0 +1,21 @@
+name: Verify live CyberAlps and Preisli
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [deploy/live-check.json]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check deployed revision, HTTPS and access boundaries
+        env:
+          EXPECTED_REVISION: ${{ github.sha }}
+        run: python3 scripts/verify_live.py

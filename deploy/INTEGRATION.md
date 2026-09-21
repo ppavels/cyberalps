@@ -1,7 +1,7 @@
 # Integration with the existing Preisli VPS
 
 Target: `v2202609399387523829`, `185.183.157.51` (VPS nano G11s).
-The exact CyberAlps domain must be supplied before this is applied.
+Confirmed canonical domain: `cyberalps.ch`.
 
 ## One-time Git changes in ppavels/preisli
 
@@ -55,7 +55,7 @@ Prerequisites: Docker Compose v2, Git, curl, systemd, Python 3.11+, the first su
 Run the versioned installer from a reviewed checkout of this repository on the target server:
 
 ```sh
-python3 scripts/install.py --domain ACTUAL_CYBERALPS_DOMAIN
+python3 scripts/install.py --domain cyberalps.ch
 ```
 
 The installer creates `/opt/cyberalps`, a dedicated service account, the `cyberalps_edge` network, a private environment file and an update timer. The administrator username is `owner`; the generated password is stored in `/opt/cyberalps/.env.production`. Do not commit, paste into chat or print this file into deployment logs.

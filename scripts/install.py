@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """One-time installation on the existing Preisli VPS, from a reviewed Git checkout."""
 import argparse
+import json
 import os
 from pathlib import Path
 import pwd
@@ -27,8 +28,10 @@ def main():
         parser.error('Supply the real CyberAlps domain; never use the existing Preisli domain.')
     if os.geteuid() != 0:
         parser.error('Run this one-time installer as root on the target VPS.')
-    if run('hostname') != 'v2202609399387523829':
-        parser.error('Unexpected hostname. This installer targets the Preisli VPS only.')
+    if run('hostname').split('.')[0] != 'v2202609399387523829':
+        addresses = json.loads(run('ip', '-json', 'address', 'show'))
+        if not any(a.get('local') == '185.183.157.51' for device in addresses for a in device.get('addr_info', [])):
+            parser.error('Unexpected host. This installer targets the Preisli VPS only.')
     for program in ['git', 'docker', 'curl', 'systemctl', 'runuser']:
         if not shutil.which(program):
             parser.error('Required program missing: ' + program)
@@ -49,6 +52,11 @@ def main():
         raise RuntimeError('Existing checkout has an unexpected origin.')
     if run('runuser', '-u', 'cyberalps', '--', 'git', '-C', str(ROOT), 'status', '--porcelain'):
         raise RuntimeError('Existing checkout contains uncommitted changes.')
+    prefix = ['runuser', '-u', 'cyberalps', '--', 'git', '-C', str(ROOT)]
+    run(*prefix, 'fetch', 'origin', 'refs/heads/main:refs/remotes/origin/main', 'refs/heads/deploy:refs/remotes/origin/deploy')
+    if run(*prefix, 'rev-parse', 'origin/main') != run(*prefix, 'rev-parse', 'origin/deploy'):
+        raise RuntimeError('Waiting for CI to approve the current CyberAlps main commit.')
+    run(*prefix, 'merge', '--ff-only', 'origin/deploy')
     envfile = ROOT / '.env.production'
     if not envfile.exists():
         with envfile.open('x') as file:
@@ -61,10 +69,16 @@ def main():
     if network.returncode:
         run('docker', 'network', 'create', 'cyberalps_edge')
     for name in ['cyberalps-update.service', 'cyberalps-update.timer']:
-        shutil.copyfile(ROOT / 'deploy' / name, Path('/etc/systemd/system') / name)
+        source = ROOT / 'deploy' / name
+        target = Path('/etc/systemd/system') / name
+        if target.exists() and target.read_bytes() != source.read_bytes():
+            raise RuntimeError('Existing systemd configuration differs; review it before replacing it.')
+        shutil.copyfile(source, target)
     run('systemctl', 'daemon-reload')
     run('systemctl', 'enable', '--now', 'cyberalps-update.timer')
-    run('systemctl', 'start', 'cyberalps-update.service')
+    run('systemctl', 'is-enabled', '--quiet', 'cyberalps-update.timer')
+    run('systemctl', 'is-active', '--quiet', 'cyberalps-update.timer')
+    run('systemctl', 'start', '--no-block', 'cyberalps-update.service')
     print('CyberAlps timer installed. Credentials are in /opt/cyberalps/.env.production (mode 0600).')
     print('The existing Caddy requires the reviewed Git changes described in deploy/INTEGRATION.md.')
 
