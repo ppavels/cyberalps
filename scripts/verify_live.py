@@ -40,6 +40,27 @@ def check():
     print('PASS: cyberalps.ch HTTPS, exact revision, DE/EN, private inbox and Preisli privacy.', flush=True)
 
 
+def check_own_audit():
+    request = urllib.request.Request('https://cyberalps.ch/api/audits',
+        data=json.dumps({'url': 'https://cyberalps.ch/en/', 'consent': True}).encode(),
+        headers={'Origin': 'https://cyberalps.ch', 'Content-Type': 'application/json'}, method='POST')
+    with urllib.request.urlopen(request, timeout=15) as response:
+        assert response.status == 202
+        audit_id = json.load(response)['id']
+    for _ in range(45):
+        with urllib.request.urlopen('https://cyberalps.ch/api/audits/' + audit_id, timeout=12) as response:
+            report = json.load(response)
+        if report['status'] == 'error':
+            raise RuntimeError('The deployed audit failed: ' + report['error'])
+        if report['status'] == 'done':
+            assert report['result']['url'] == 'https://cyberalps.ch/en/'
+            assert len(report['result']['checks']) >= 15
+            print('PASS: real audit of our own website; scores=' + json.dumps(report['result']['scores']))
+            return
+        time.sleep(2)
+    raise RuntimeError('The deployed audit did not finish in time.')
+
+
 if __name__ == '__main__':
     last = None
     for attempt in range(60):
@@ -52,3 +73,4 @@ if __name__ == '__main__':
             time.sleep(10)
     else:
         raise SystemExit('Live verification did not complete: ' + str(last))
+    check_own_audit()
