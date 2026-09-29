@@ -69,3 +69,25 @@ The privacy page describes the implementation's data handling. Add verified oper
 ## Design assets
 
 `public/alps.webp` is a generated Alpine image optimized to about 107 KB. The mark is an editable SVG/CSS mountain shield. No fabricated client logos or trust endorsements are used.
+
+## Owner Telegram notifications
+
+Accepted audit requests and saved contact forms create durable SQLite outbox entries.
+A dedicated worker sends plain-text messages prefixed with 🏔️ CyberAlps, independently
+of the audit worker and HTTP response. Failed deliveries retry with backoff and survive
+restarts. An ambiguous network timeout can cause a duplicate on retry; the short request
+ID identifies the same enquiry. Deleted or expired source records remove their outbox entries.
+
+Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in the server-only .env.production.
+For the owner's requested existing BetRadar destination on /opt/cyberalps, the updater
+copies only these two settings once from the running Compose betradar/bot container.
+It never logs the values, changes BetRadar, or uses its updater. After copying, CyberAlps
+uses its own saved configuration. The first update installs the code; the following timer
+cycle imports the configuration and recreates only the CyberAlps container. Other installations
+configure the two variables explicitly. Rotating the shared token requires updating both apps.
+
+A one-time activation message confirms delivery. /api/health exposes only configuration
+status and the number of retained delivered notifications, never chat IDs or credentials.
+Contact notifications include name, email, optional website and a bounded message excerpt;
+the complete message stays in the authenticated inbox. The privacy page describes Telegram
+processing, and local deletion does not delete a copy already delivered to Telegram.

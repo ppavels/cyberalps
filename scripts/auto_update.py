@@ -137,6 +137,38 @@ def deploy(revision, previous):
     print('Deployed CyberAlps ' + revision, flush=True)
 
 
+def configure_shared_telegram():
+    """Copy the owner's explicitly selected existing bot configuration once on this VPS."""
+    if str(ROOT) != '/opt/cyberalps':
+        return False
+    text = ENV.read_text()
+    values = dict(line.split('=', 1) for line in text.splitlines() if '=' in line and not line.lstrip().startswith('#'))
+    keys = ('TELEGRAM_BOT_TOKEN', 'TELEGRAM_CHAT_ID')
+    if all(values.get(key, '').strip().strip("\"'") for key in keys):
+        return False
+    containers = command('docker', 'ps', '--filter', 'label=com.docker.compose.project=betradar',
+                         '--filter', 'label=com.docker.compose.service=bot', '--format', '{{.ID}}').splitlines()
+    if len(containers) != 1:
+        raise RuntimeError('Expected one existing BetRadar bot to configure the requested Telegram destination.')
+    template = '{{range .Config.Env}}{{$pair := split . "="}}{{if or (eq (index $pair 0) "TELEGRAM_BOT_TOKEN") (eq (index $pair 0) "TELEGRAM_CHAT_ID")}}{{println .}}{{end}}{{end}}'
+    selected = command('docker', 'inspect', '--format', template, containers[0])
+    credentials = dict(line.split('=', 1) for line in selected.splitlines() if '=' in line)
+    token, chat = (credentials.get(key, '').strip() for key in keys)
+    if not re.fullmatch(r'[0-9]+:[A-Za-z0-9_-]+', token) or not re.fullmatch(r'-?[0-9]+', chat):
+        raise RuntimeError('Existing Telegram configuration is missing or invalid.')
+    lines = [line for line in text.splitlines() if line.partition('=')[0].strip() not in keys]
+    target = ENV.with_name('.env.production.tmp')
+    try:
+        with open(target, 'w', opener=lambda path, flags: os.open(path, flags, 0o600)) as handle:
+            handle.write('\n'.join(lines) + '\nTELEGRAM_BOT_TOKEN=' + token + '\nTELEGRAM_CHAT_ID=' + chat + '\n')
+        target.chmod(0o600)
+        target.replace(ENV)
+    finally:
+        target.unlink(missing_ok=True)
+    print('Configured CyberAlps notifications for the existing owner Telegram chat.', flush=True)
+    return True
+
+
 def main():
     os.umask(0o077)
     STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -165,8 +197,15 @@ def main():
         previous = previous_file.read_text().strip() if previous_file.exists() else ''
         if previous and not re.fullmatch(r'[a-f0-9]{40}', previous):
             raise RuntimeError('Invalid saved deployment revision.')
-        if previous == revision and healthy(revision, STATE / 'active.compose.yml'):
-            return
+        if previous == revision:
+            changed = configure_shared_telegram()
+            telegram_marker = STATE / 'telegram-configured'
+            if changed or not telegram_marker.exists():
+                compose(revision, ROOT / 'compose.prod.yml', 'up', '-d', '--no-build', '--pull', 'never', 'app', capture=False)
+                wait_healthy(revision, ROOT / 'compose.prod.yml')
+                telegram_marker.write_text('configured\n')
+            if healthy(revision, STATE / 'active.compose.yml'):
+                return
         if shutil.disk_usage(STATE).free < 1024**3:
             raise RuntimeError('At least 1 GB free disk space is needed for deployment.')
         load_image(revision)

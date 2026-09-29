@@ -51,10 +51,13 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.request('/api/audits', {'url': 'example.org', 'consent': True})[0], 503)
         with server.connect() as db:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM audits').fetchone()[0], 1)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM notifications WHERE kind='audit'").fetchone()[0], 1)
 
     def test_contact_request_is_private_and_can_be_managed(self):
         lead = {'name': 'Test Client', 'email': 'client@example.com', 'message': 'Please review the website.', 'consent': True}
         self.assertEqual(self.request('/api/leads', lead)[0], 201)
+        with server.connect() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM notifications WHERE kind='lead'").fetchone()[0], 1)
         self.assertEqual(self.request('/api/admin/leads')[0], 401)
         code, headers, data = self.request('/api/admin/leads', auth=True)
         self.assertEqual(code, 200)
@@ -66,6 +69,15 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.request('/api/admin/leads', auth=True)[2][0]['status'], 'done')
         self.assertEqual(self.request(url, {'action': 'delete'}, auth=True)[0], 200)
         self.assertEqual(self.request('/api/admin/leads', auth=True)[2], [])
+        with server.connect() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM notifications WHERE kind='lead'").fetchone()[0], 0)
+
+    def test_rejected_or_honeypot_requests_do_not_notify(self):
+        self.assertEqual(self.request('/api/leads', {'website': 'spam'})[0], 200)
+        self.assertEqual(self.request('/api/leads', {'name': 'Invalid'})[0], 400)
+        self.assertEqual(self.request('/api/audits', {'url': '127.0.0.1', 'consent': True})[0], 400)
+        with server.connect() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM notifications WHERE kind IN ('audit','lead')").fetchone()[0], 0)
 
     def test_all_admin_page_paths_require_authentication(self):
         for path in ['/admin', '/admin/', '/admin.html']:

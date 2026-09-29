@@ -18,6 +18,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
+from . import notifications
 from .audit import run_audit
 from .fetch import FetchError, normalize_url
 
@@ -53,6 +54,7 @@ def initialize():
             language TEXT NOT NULL, audit_id TEXT, status TEXT NOT NULL DEFAULT 'new'
           );
         ''')
+        notifications.initialize(db)
         db.execute("UPDATE audits SET status='error', error='The service restarted. Please run the check again.' WHERE status IN ('queued','running')")
     cleanup()
 
@@ -61,6 +63,7 @@ def cleanup():
     with connect() as db:
         db.execute('DELETE FROM audits WHERE created < ?', (time.time() - 86400,))
         db.execute('DELETE FROM leads WHERE created < ?', (time.time() - 30 * 86400,))
+        notifications.cleanup(db)
 
 
 def worker():
@@ -203,8 +206,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/health':
             try:
                 with connect() as db:
-                    db.execute('SELECT 1').fetchone()
-                return self.send(200, {'ok': True, 'revision': REVISION, 'queue': JOBS.qsize()})
+                    delivered = db.execute('SELECT COUNT(*) FROM notifications WHERE sent IS NOT NULL').fetchone()[0]
+                return self.send(200, {'ok': True, 'revision': REVISION, 'queue': JOBS.qsize(), 'telegram': {'configured': notifications.configured(), 'delivered': delivered}})
             except sqlite3.Error:
                 return self.send(503, {'ok': False})
         if re.fullmatch(r'/api/audits/[a-f0-9]{32}', path):
@@ -268,13 +271,12 @@ class Handler(BaseHTTPRequestHandler):
                 if not rate_allowed(self.client_address_key(), 'audit'):
                     return self.send(429, {'error': 'The hourly check limit has been reached. Please try again later.'}, extra={'Retry-After': '3600'})
                 audit_id = secrets.token_hex(16)
-                with connect() as db:
-                    db.execute('INSERT INTO audits VALUES (?,?,?,?,?,?,?)', (audit_id, url, time.time(), 'queued', 'queued', None, None))
                 try:
-                    JOBS.put_nowait((audit_id, url))
-                except queue.Full:
                     with connect() as db:
-                        db.execute('DELETE FROM audits WHERE id=?', (audit_id,))
+                        db.execute('INSERT INTO audits VALUES (?,?,?,?,?,?,?)', (audit_id, url, time.time(), 'queued', 'queued', None, None))
+                        JOBS.put_nowait((audit_id, url))
+                        notifications.enqueue(db, 'audit', audit_id)
+                except queue.Full:
                     return self.send(503, {'error': 'All check slots are busy. Please try again shortly.'}, extra={'Retry-After': '60'})
                 return self.send(202, {'id': audit_id, 'status': 'queued'})
             if path == '/api/leads':
@@ -291,9 +293,11 @@ class Handler(BaseHTTPRequestHandler):
                 audit_id = data.get('auditId', '')
                 if not re.fullmatch(r'[a-f0-9]{32}', str(audit_id)):
                     audit_id = ''
+                lead_id = secrets.token_hex(16)
                 with connect() as db:
                     db.execute('INSERT INTO leads (id,created,name,email,url,message,language,audit_id) VALUES (?,?,?,?,?,?,?,?)',
-                               (secrets.token_hex(16), time.time(), name, email, site, message, 'de' if data.get('language') == 'de' else 'en', audit_id))
+                               (lead_id, time.time(), name, email, site, message, 'de' if data.get('language') == 'de' else 'en', audit_id))
+                    notifications.enqueue(db, 'lead', lead_id)
                 return self.send(201, {'ok': True})
             if re.fullmatch(r'/api/admin/leads/[a-f0-9]{32}', path):
                 if not self.authorized():
@@ -302,6 +306,7 @@ class Handler(BaseHTTPRequestHandler):
                 with connect() as db:
                     if data.get('action') == 'delete':
                         db.execute('DELETE FROM leads WHERE id=?', (lead_id,))
+                        db.execute('DELETE FROM notifications WHERE id=?', ('lead:' + lead_id,))
                     elif data.get('action') == 'done':
                         db.execute("UPDATE leads SET status='done' WHERE id=?", (lead_id,))
                     else:
@@ -318,6 +323,7 @@ def main():
     if ORIGIN and not re.fullmatch(r'https://[a-z0-9.-]+', ORIGIN):
         raise RuntimeError('PUBLIC_BASE_URL must be an HTTPS origin without a path.')
     initialize()
+    threading.Thread(target=notifications.worker, args=(connect, ORIGIN), daemon=True, name='telegram-worker').start()
     threading.Thread(target=worker, daemon=True, name='audit-worker').start()
     server = Server(('0.0.0.0', int(os.environ.get('PORT', '3002'))), Handler)
     print('CyberAlps listening; revision=' + REVISION, flush=True)

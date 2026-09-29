@@ -18,6 +18,8 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set the canonical HTTPS domain}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set the owner password}
       TRUST_PROXY: "1"
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
     volumes:
       - cyberalps_data:/data
     networks:
