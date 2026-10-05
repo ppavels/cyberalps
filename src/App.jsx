@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, ArrowUpRight, ShieldCheck, Search, Gauge, Code2, Globe2, Menu, X, Mountain, Check, CircleAlert, ChevronDown, LoaderCircle, FileCheck2, Mail, Minus, CheckCircle2 } from 'lucide-react';
 import { content, checks } from './content.js';
 
-const demo = { url: 'https://example.com', scores: { security: 82, seo: 67, ai: 41 }, checks: [
+const demo = { url: 'https://example.com', checks: [
   { code: 'hsts', category: 'security', status: 'attention', evidence: 'Demonstration only', weight: 2 },
   { code: 'description', category: 'seo', status: 'attention', evidence: 'Demonstration only', weight: 1 },
   { code: 'structured', category: 'ai', status: 'attention', evidence: 'Demonstration only', weight: 2 },
@@ -10,22 +10,29 @@ const demo = { url: 'https://example.com', scores: { security: 82, seo: 67, ai: 
 const sections = ['services', 'process', 'check', 'contact'];
 const serviceIcons = [Code2, ShieldCheck, Search, Gauge];
 function Brand() { return <a className="brand" href="/"><span className="brand-mark"><Mountain size={23} strokeWidth={1.8}/></span>CyberAlps</a>; }
-function scoreColor(value) { return value === null ? 'muted' : value >= 80 ? 'green' : value >= 55 ? 'amber' : 'red'; }
+function orderedChecks(report) {
+  const priority = { attention: 0, unknown: 1, pass: 2 };
+  return [...report.checks].sort((a, b) => priority[a.status] - priority[b.status] || b.weight - a.weight);
+}
 
-function Report({ t, report, isDemo, busy, stage, onPlan }) {
+function Report({ t, report, isDemo, busy, stage, onPlan, onReview }) {
   let host;
   try { host = new URL(report.url).hostname; } catch { host = report.url; }
   return <div className="report" aria-busy={busy}>
     <div className="report-heading"><div><div className="report-title">{isDemo ? t.example : t.live}<span className={'badge ' + (isDemo ? '' : 'verified')}>{isDemo ? t.demo : 'CHECK'}</span></div><span className="report-host">{host}</span></div><FileCheck2 size={22} className="muted"/></div>
     {busy ? <div className="scan-state" role="status"><LoaderCircle className="spin" size={34}/><strong>{t.checking}</strong><span>{t.stages[stage] || t.stages.queued}</span><div className="scan-track"><span/></div></div> : <>
-      <div className="scores">{Object.entries(report.scores).map(([key, value]) => <div className={'score ' + scoreColor(value)} key={key}>
-        <div className="gauge" style={{ '--value': value ?? 0 }}><span className="score-number">{value ?? '—'}<small>/100</small></span></div>
-        <span className="score-label">{t.categories[key]}</span><span className="score-status">{value === null ? t.unknown : value >= 80 ? t.good : value >= 55 ? t.improve : t.low}</span>
-        <div className="mobile-meter"><span style={{ width: `${value ?? 0}%` }}/></div>
-      </div>)}</div>
-      <div className="findings"><h3>{t.next}</h3>{report.checks.filter(c => c.status !== 'pass').slice(0,3).map(c => <div className="finding" key={c.code}><CircleAlert size={15} className={c.category === 'seo' ? 'amber' : 'red'}/><span>{checks[c.code]?.[t === content.de ? 1 : 0] || c.code}</span><small>{t.categories[c.category]}</small></div>)}
-        {!report.checks.some(c => c.status !== 'pass') && <div className="finding"><CheckCircle2 className="green" size={18}/>{t.good}</div>}
+      <p className="report-scope">{t.reportScope}</p>
+      <div className="check-counts">{Object.entries(t.categories).map(([key, label]) => {
+        const items = report.checks.filter(c => c.category === key);
+        const passed = items.filter(c => c.status === 'pass').length;
+        const attention = items.filter(c => c.status === 'attention').length;
+        const unknown = items.filter(c => c.status === 'unknown').length;
+        return <div className="check-count" key={key}><strong>{label}</strong><span>{passed} {t.passedCount}</span><span className={attention ? 'amber' : 'muted'}>{attention} {t.reviewCount}</span>{unknown > 0 && <span>{unknown} {t.unknown}</span>}</div>;
+      })}</div>
+      <div className="findings"><h3>{t.next}</h3>{orderedChecks(report).filter(c => c.status === 'attention').slice(0,3).map(c => <div className="finding" key={c.code}><CircleAlert size={15} className="amber"/><span>{checks[c.code]?.[t === content.de ? 1 : 0] || c.code}</span></div>)}
+        {!report.checks.some(c => c.status === 'attention') && <p className="report-scope">{t.noFindings}</p>}
       </div>
+      <div className="manual-review"><strong>{t.manualTitle}</strong><p>{t.manualScope}</p><button className="button" onClick={onReview}>{t.reviewCta}<ArrowRight size={16}/></button></div>
       <button className="report-action" onClick={onPlan}><span>{t.turn}</span><span>{t.plan}<ArrowRight size={16}/></span></button>
     </>}
   </div>;
@@ -41,6 +48,7 @@ export default function App({ lang = 'de', page = 'home' }) {
   const [showDetails, setShowDetails] = useState(false);
   const [error, setError] = useState('');
   const [contact, setContact] = useState(false);
+  const [reviewRequest, setReviewRequest] = useState(false);
   const [leadStatus, setLeadStatus] = useState('');
   const [leadError, setLeadError] = useState('');
   const dialog = useRef(null);
@@ -98,7 +106,8 @@ export default function App({ lang = 'de', page = 'home' }) {
       setLeadStatus('done');
     } catch(e) { setLeadError(e.message); setLeadStatus(''); }
   }
-  function openContact() { setContact(true); setMenu(false); }
+  function openContact() { setReviewRequest(false); setContact(true); setMenu(false); }
+  function requestReview() { setReviewRequest(true); setLeadStatus(''); setContact(true); }
   function showPlan() { setShowDetails(true); setTimeout(() => document.getElementById('report-details')?.scrollIntoView({behavior:'smooth', block:'start'}), 30); }
   const pageSuffix = page === 'home' ? '' : page + '/';
 
@@ -121,10 +130,10 @@ export default function App({ lang = 'de', page = 'home' }) {
             <label className="checkbox consent"><input type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} required disabled={busy}/><span>{t.consent}</span></label>
           </form><div className="hero-meta"><span>{t.scope}</span><button className="text-link" onClick={() => {setReport(demo);setShowDetails(true);}} disabled={busy}>{t.exampleLink}<ArrowUpRight size={15}/></button></div>
           {error && <div className="error" role="alert"><CircleAlert size={19}/><span>{error}</span></div>}
-        </div><Report t={t} report={report} isDemo={isDemo} busy={busy} stage={job?.stage || 'queued'} onPlan={showPlan}/></div></section>
-      {showDetails && <section className="container report-details section" id="report-details"><div className="section-head"><div><div className="eyebrow">{isDemo ? t.example : t.live}</div><h2>{t.reportTitle}</h2><p>{t.reportIntro}</p></div><button className="button" onClick={openContact}>{t.cta}<ArrowRight size={16}/></button></div>
+        </div><Report t={t} report={report} isDemo={isDemo} busy={busy} stage={job?.stage || 'queued'} onPlan={showPlan} onReview={requestReview}/></div></section>
+      {showDetails && <section className="container report-details section" id="report-details"><div className="section-head"><div><div className="eyebrow">{isDemo ? t.example : t.live}</div><h2>{t.reportTitle}</h2><p>{t.reportIntro}</p></div><button className="button" onClick={requestReview}>{t.reviewCta}<ArrowRight size={16}/></button></div>
         {isDemo && <p className="notice">{lang === 'de' ? 'Demonstration: Diese Werte sind keine tatsächlichen Messergebnisse.' : 'Demonstration: these values are not actual measurement results.'}</p>}
-        <div className="result-list">{report.checks.map(c => <details key={c.code} className={'result ' + c.status}><summary><span className={'status-dot ' + (c.status === 'pass' ? 'green' : c.status === 'unknown' ? 'muted' : 'amber')}>{c.status === 'pass' ? <Check size={15}/> : c.status === 'unknown' ? <Minus size={15}/> : <CircleAlert size={15}/>}</span><span>{checks[c.code]?.[lang === 'de' ? 1 : 0] || c.code}</span><span className="result-category">{t.categories[c.category]}</span><span className="result-status">{c.status === 'pass' ? t.checked : c.status === 'unknown' ? t.unknown : t.issues}</span><ChevronDown size={17}/></summary><div className="result-body"><b>{t.evidence}</b><code>{c.evidence}</code><b>{t.action}</b><p>{checks[c.code]?.[lang === 'de' ? 3 : 2]}</p><small>{t.weight}: {c.weight}</small></div></details>)}</div><p className="limitation"><ShieldCheck size={17}/>{t.limitation}</p>
+        <div className="result-list">{orderedChecks(report).map(c => <details key={c.code} className={'result ' + c.status}><summary><span className={'status-dot ' + (c.status === 'pass' ? 'green' : c.status === 'unknown' ? 'muted' : 'amber')}>{c.status === 'pass' ? <Check size={15}/> : c.status === 'unknown' ? <Minus size={15}/> : <CircleAlert size={15}/>}</span><span>{checks[c.code]?.[lang === 'de' ? 1 : 0] || c.code}</span><span className="result-category">{t.categories[c.category]}</span><span className="result-status">{c.status === 'pass' ? t.checked : c.status === 'unknown' ? t.unknown : t.issues}</span><ChevronDown size={17}/></summary><div className="result-body"><b>{t.evidence}</b><code>{c.evidence}</code><b>{t.action}</b><p>{checks[c.code]?.[lang === 'de' ? 3 : 2]}</p><small>{t.weight}: {c.weight}</small></div></details>)}</div><p className="limitation"><ShieldCheck size={17}/>{t.limitation}</p>
       </section>}
       <section className="container section process" id="process"><div className="eyebrow">{t.processEyebrow}</div><h2>{t.processTitle}</h2><ol className="steps">{t.steps.map(([title, text], index) => <li key={title}><div className="step-top"><span>0{index + 1}</span><i/></div><h3>{title}</h3><p>{text}</p></li>)}</ol></section>
       <section className="container section approach" id="approach"><div className="approach-intro"><h2>{t.approachTitle}</h2><p>{t.approachIntro}</p></div><div className="approach-grid">{t.approachItems.map(([title,text])=><article key={title}><ShieldCheck size={23}/><h3>{title}</h3><p>{text}</p></article>)}</div></section>
@@ -132,8 +141,8 @@ export default function App({ lang = 'de', page = 'home' }) {
       <section className="container section faq"><h2>{t.faqTitle}</h2><div>{t.faq.map(([question, answer]) => <details key={question}><summary>{question}<ChevronDown size={18}/></summary><p>{answer}</p></details>)}</div></section>
     </>}</main>
     <footer className="container"><Brand/><span className="footer-line">{t.footerLine}</span><div><button onClick={openContact}>{t.contact}</button><a href={`/${lang}/privacy/`}>{t.privacy}</a><a href={`/${lang}/terms/`}>{t.terms}</a></div></footer>
-    <dialog ref={dialog} onCancel={() => setContact(false)} onClick={event => {if(event.target===dialog.current) setContact(false);}}><div className="contact-dialog"><button className="dialog-close" aria-label={t.close} onClick={() => setContact(false)}><X size={22}/></button><div className="eyebrow">CYBERALPS</div><h2>{t.requestTitle}</h2><p>{t.requestIntro}</p>
-      {leadStatus === 'done' ? <div className="success" role="status"><CheckCircle2 size={28}/><p>{t.success}</p><button className="button" onClick={() => setContact(false)}>{t.close}</button></div> : <form onSubmit={sendLead} className="contact-form"><div className="form-row"><label>{t.name}<input name="name" autoComplete="name" minLength={2} maxLength={100} required/></label><label>{t.email}<input name="email" type="email" autoComplete="email" maxLength={254} required/></label></div><label>{t.optionalWebsite}<input name="url" autoComplete="url" defaultValue={url} maxLength={2048}/></label><label>{t.message}<textarea name="message" rows={4} minLength={10} maxLength={3000} required/></label><label className="honeypot" aria-hidden="true">Leave empty<input name="website" autoComplete="off" tabIndex={-1}/></label><label className="checkbox"><input type="checkbox" name="consent" required/><span>{t.contactConsent} <a href={`/${lang}/privacy/`}>{t.privacy}</a></span></label>{leadError && <p role="alert" className="error">{leadError}</p>}<button className="button" disabled={leadStatus === 'sending'}>{leadStatus === 'sending' ? t.sending : t.send}<ArrowRight size={18}/></button></form>}
+    <dialog ref={dialog} onCancel={() => setContact(false)} onClick={event => {if(event.target===dialog.current) setContact(false);}}><div className="contact-dialog"><button className="dialog-close" aria-label={t.close} onClick={() => setContact(false)}><X size={22}/></button><div className="eyebrow">CYBERALPS</div><h2>{reviewRequest ? t.manualTitle : t.requestTitle}</h2><p>{reviewRequest ? t.reviewIntro : t.requestIntro}</p>
+      {leadStatus === 'done' ? <div className="success" role="status"><CheckCircle2 size={28}/><p>{t.success}</p><button className="button" onClick={() => setContact(false)}>{t.close}</button></div> : <form onSubmit={sendLead} className="contact-form"><div className="form-row"><label>{t.name}<input name="name" autoComplete="name" minLength={2} maxLength={100} required/></label><label>{t.email}<input name="email" type="email" autoComplete="email" maxLength={254} required/></label></div><label>{t.optionalWebsite}<input name="url" autoComplete="url" key={reviewRequest ? 'review-url' : 'project-url'} defaultValue={reviewRequest && !isDemo ? report.url : url} maxLength={2048}/></label><label>{t.message}<textarea key={reviewRequest ? 'review' : 'project'} defaultValue={reviewRequest ? t.reviewMessage : ''} name="message" rows={4} minLength={10} maxLength={3000} required/></label><label className="honeypot" aria-hidden="true">Leave empty<input name="website" autoComplete="off" tabIndex={-1}/></label><label className="checkbox"><input type="checkbox" name="consent" required/><span>{t.contactConsent} <a href={`/${lang}/privacy/`}>{t.privacy}</a></span></label>{leadError && <p role="alert" className="error">{leadError}</p>}<button className="button" disabled={leadStatus === 'sending'}>{leadStatus === 'sending' ? t.sending : t.send}<ArrowRight size={18}/></button></form>}
     </div></dialog>
   </>;
 }

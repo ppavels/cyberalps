@@ -6,7 +6,7 @@ A responsive Alpine Dark website with German and English pages, a passive websit
 
 - Prerendered React pages at `/de/` and `/en/`, responsive navigation, an Alpine hero, services, process, FAQ and contact dialog.
 - A real, bounded technical check: initial HTML, HTTPS, response headers, SEO metadata, robots.txt, sitemap XML and selected AI-search crawler permissions.
-- Per-check evidence and transparent weighted scores. Unavailable checks are excluded. The initial sample report is clearly labelled **DEMO**.
+- Evidence, counts of passed/review/unavailable checks and a direct manual-review enquiry. The UI does not present technical checklist percentages as whole-site quality. Weighted scores remain in the API for compatibility; unavailable checks are excluded. The initial sample report is clearly labelled **DEMO**.
 - One audit worker, public-address DNS validation on every redirect, IP-pinned connections with normal TLS validation, response/time/queue/rate limits.
 - SQLite contact requests at `/admin`, protected by HTTP Basic authentication; no email notifications or external AI service dependency.
 - GitHub CI, prebuilt Docker release images and a separate systemd deployment timer with health checks and rollback.
@@ -91,3 +91,17 @@ status and the number of retained delivered notifications, never chat IDs or cre
 Contact notifications include name, email, optional website and a bounded message excerpt;
 the complete message stays in the authenticated inbox. The privacy page describes Telegram
 processing, and local deletion does not delete a copy already delivered to Telegram.
+
+## Checklist v2
+
+HSTS must have a positive max-age on HTTPS. CSP checks script restrictions rather than
+header presence; broad sources, unsafe-eval and unrestricted unsafe-inline need review.
+Framing checks inspect frame-ancestors values. JSON-LD needs a recognised Schema.org
+context and typed entity (including @graph), without claiming full schema validation.
+Sitemaps need the sitemap namespace and nonempty absolute HTTP(S) locations. Duplicate
+titles/canonicals are flagged. Unknown Googlebot checks stay visible in coverage.
+No extra third-party requests or active security probes were added.
+
+Reports show observed counts, findings first, and explicit gaps (source code, access
+controls, mobile usability, real enquiries/bookings). A manual-review CTA prefills the
+existing contact form and preserves the audit ID; sending still requires consent.

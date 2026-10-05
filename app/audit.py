@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from datetime import datetime, timezone
 from html.parser import HTMLParser
@@ -12,12 +13,48 @@ import xml.etree.ElementTree as ET
 from .fetch import FetchError, fetch_public, normalize_url
 
 
+def csp_policies(value):
+    policies = []
+    for raw in value.split(','):
+        directives = {}
+        for directive in raw.split(';'):
+            tokens = directive.split()
+            if tokens:
+                directives.setdefault(tokens[0].lower(), tokens[1:])
+        policies.append(directives)
+    return policies
+
+
+def restricted_scripts(policy):
+    sources = policy.get('script-src', policy.get('default-src'))
+    if sources is None:
+        return False
+    nonce_or_hash = any(s.startswith(("'nonce-", "'sha256-", "'sha384-", "'sha512-")) for s in sources)
+    return not any(s in {'*', 'http:', 'https:', 'data:', "'unsafe-eval'"} for s in sources) and (
+        "'unsafe-inline'" not in sources or nonce_or_hash)
+
+
+def typed_schema(value, inherited=False):
+    """Recognise basic Schema.org structure, not schema correctness or rich-result eligibility."""
+    if isinstance(value, list):
+        return any(typed_schema(item, inherited) for item in value)
+    if not isinstance(value, dict):
+        return False
+    context = value.get('@context')
+    known = inherited or context in ('https://schema.org', 'https://schema.org/', 'http://schema.org', 'http://schema.org/')
+    kind = value.get('@type')
+    typed = isinstance(kind, str) and bool(kind.strip()) or isinstance(kind, list) and any(isinstance(k, str) and k.strip() for k in kind)
+    return bool(known and typed or typed_schema(value.get('@graph'), known))
+
+
 class Page(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.title = ''
+        self.titles = 0
         self.meta = {}
         self.canonical = ''
+        self.canonicals = 0
         self.lang = ''
         self.h1 = 0
         self.images = 0
@@ -37,6 +74,7 @@ class Page(HTMLParser):
         if tag == 'html':
             self.lang = attrs.get('lang', '') or ''
         if tag == 'title':
+            self.titles += 1
             self.in_title = True
         if tag == 'h1':
             self.h1 += 1
@@ -44,6 +82,7 @@ class Page(HTMLParser):
             key = (attrs.get('name') or attrs.get('property') or '').lower()
             self.meta[key] = attrs.get('content') or ''
         if tag == 'link' and 'canonical' in (attrs.get('rel') or '').lower().split():
+            self.canonicals += 1
             self.canonical = attrs.get('href') or ''
         if tag == 'img':
             self.images += 1
@@ -96,20 +135,28 @@ def run_audit(value, fetcher=fetch_public, progress=lambda _: None):
     secure = urlsplit(response.url).scheme == 'https'
     progress('checks')
     add('https', 'security', secure, response.url, 3)
-    add('hsts', 'security', bool(headers.get('strict-transport-security')), headers.get('strict-transport-security', 'Not present'), 2)
+    hsts = headers.get('strict-transport-security', '')
+    ages = re.findall(r'(?:^|;)\s*max-age\s*=\s*"?(\d+)"?\s*(?=;|$)', hsts, re.I)
+    add('hsts', 'security', secure and len(ages) == 1 and any(d != '0' for d in ages[0]), hsts or 'Not present', 2)
     csp = headers.get('content-security-policy', '')
-    add('csp', 'security', bool(csp), csp or 'Not present', 2)
+    policies = csp_policies(csp)
+    add('csp', 'security', any(restricted_scripts(p) for p in policies), csp or 'No enforced Content-Security-Policy header', 2)
     add('nosniff', 'security', headers.get('x-content-type-options', '').lower() == 'nosniff', headers.get('x-content-type-options', 'Not present'))
     frame = headers.get('x-frame-options', '')
-    add('framing', 'security', frame.upper() in {'DENY', 'SAMEORIGIN'} or 'frame-ancestors' in csp.lower(), frame or ('frame-ancestors in CSP' if 'frame-ancestors' in csp.lower() else 'Not present'))
+    ancestors = [p['frame-ancestors'] for p in policies if 'frame-ancestors' in p]
+    restricted_frame = any(s and not any(x in {'*', 'http:', 'https:'} for x in s) for s in ancestors)
+    add('framing', 'security', restricted_frame if ancestors else frame.strip().upper() in {'DENY', 'SAMEORIGIN'}, 'frame-ancestors: ' + str(ancestors) if ancestors else frame or 'Not present')
     add('mixed', 'security', not page.mixed if secure else None, f'{len(page.mixed)} HTTP resource references')
-    add('title', 'seo', bool(page.title.strip()), page.title.strip() or 'Not present', 2)
+    add('title', 'seo', page.titles == 1 and bool(page.title.strip()), f'{page.titles} title elements: {page.title.strip()}', 2)
     description = page.meta.get('description', '').strip()
     add('description', 'seo', bool(description), description or 'Not present')
     add('h1', 'seo', page.h1 == 1, f'{page.h1} H1 elements')
-    add('canonical', 'seo', bool(page.canonical), page.canonical or 'Not present')
+    try:
+        canonical_valid = bool(page.canonical) and bool(urlsplit(page.canonical).netloc) and urlsplit(page.canonical).scheme in {'http', 'https'}
+    except ValueError:
+        canonical_valid = False
+    add('canonical', 'seo', page.canonicals == 1 and canonical_valid, f'{page.canonicals} canonical links: {page.canonical or "Not present"}')
     directives = (page.meta.get('robots', '') + ',' + page.meta.get('googlebot', '') + ',' + headers.get('x-robots-tag', '')).lower()
-    import re
     tokens = re.split(r'[\s,;:]+', directives)
     add('indexable', 'seo', not any(x in tokens for x in ['noindex', 'none']), directives.strip(',') or 'No noindex directive observed', 3)
     add('viewport', 'seo', 'width=device-width' in page.meta.get('viewport', '').replace(' ', '').lower(), page.meta.get('viewport', 'Not present'))
@@ -119,11 +166,11 @@ def run_audit(value, fetcher=fetch_public, progress=lambda _: None):
     for item in page.json_ld:
         try:
             parsed = json.loads(item)
-            if isinstance(parsed, (dict, list)) and parsed:
+            if typed_schema(parsed):
                 valid += 1
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, RecursionError):
             pass
-    add('structured', 'ai', valid > 0, f'{valid} parseable JSON-LD blocks; schema accuracy not validated', 2)
+    add('structured', 'ai', valid > 0, f'{valid} of {len(page.json_ld)} JSON-LD blocks have a recognised Schema.org context and typed entity; content accuracy and required properties not validated', 2)
     readable = len(' '.join(page.text_parts))
     add('readable', 'ai', readable >= 200, f'{readable} text characters in the initial HTML; heuristic threshold: 200', 2)
     progress('discovery')
@@ -140,13 +187,16 @@ def run_audit(value, fetcher=fetch_public, progress=lambda _: None):
             for agent in ['OAI-SearchBot', 'PerplexityBot']:
                 add(agent.lower(), 'ai', parser.can_fetch(agent, response.url), f'robots.txt permission for {agent}; actual access not verified')
         elif robots.status in {404, 410}:
+            add('googlebot', 'seo', True, f'No robots.txt found (HTTP {robots.status}); no rule observed', 2)
             for agent in ['OAI-SearchBot', 'PerplexityBot']:
                 add(agent.lower(), 'ai', True, f'No robots.txt found (HTTP {robots.status}); no rule observed')
         else:
+            add('googlebot', 'seo', None, f'robots.txt could not be interpreted (HTTP {robots.status})', 2)
             for agent in ['OAI-SearchBot', 'PerplexityBot']:
                 add(agent.lower(), 'ai', None, f'robots.txt could not be interpreted (HTTP {robots.status})')
     except FetchError:
         add('robots', 'seo', None, 'Could not retrieve robots.txt')
+        add('googlebot', 'seo', None, 'Could not evaluate robots.txt', 2)
         for agent in ['OAI-SearchBot', 'PerplexityBot']:
             add(agent.lower(), 'ai', None, 'Could not evaluate robots.txt')
     try:
@@ -155,8 +205,11 @@ def run_audit(value, fetcher=fetch_public, progress=lambda _: None):
         if sitemap.status == 200 and b'<!DOCTYPE' not in sitemap.body.upper() and b'<!ENTITY' not in sitemap.body.upper():
             try:
                 root = ET.fromstring(sitemap.body)
-                valid_map = root.tag.split('}')[-1] in {'urlset', 'sitemapindex'}
-            except ET.ParseError:
+                namespace = '{http://www.sitemaps.org/schemas/sitemap/0.9}'
+                entry = 'url' if root.tag == namespace + 'urlset' else 'sitemap' if root.tag == namespace + 'sitemapindex' else None
+                locations = [child.findtext(namespace + 'loc', '') for child in root.findall(namespace + entry)] if entry else []
+                valid_map = bool(locations) and all(urlsplit(loc.strip()).scheme in {'http', 'https'} and urlsplit(loc.strip()).netloc for loc in locations)
+            except (ET.ParseError, ValueError):
                 pass
         add('sitemap', 'seo', valid_map, f'/sitemap.xml: HTTP {sitemap.status}; XML sitemap detected: {valid_map}')
     except FetchError:
@@ -166,7 +219,9 @@ def run_audit(value, fetcher=fetch_public, progress=lambda _: None):
         observed = [c for c in checks if c['category'] == category and c['status'] != 'unknown']
         possible = sum(c['weight'] for c in observed)
         scores[category] = round(100 * sum(c['weight'] for c in observed if c['status'] == 'pass') / possible) if possible else None
-    return {'url': response.url, 'checkedAt': datetime.now(timezone.utc).isoformat(),
+    coverage = {category: {status: sum(c['category'] == category and c['status'] == status for c in checks)
+                          for status in ['pass', 'attention', 'unknown']} for category in scores}
+    return {'url': response.url, 'checkedAt': datetime.now(timezone.utc).isoformat(), 'coverage': coverage,
             'scores': scores, 'checks': checks, 'pageBytes': len(response.body),
             'fetchMs': response.elapsed_ms, 'title': page.title.strip()[:200],
-            'methodology': 'Weighted technical checklist v1; unknown checks excluded. Single page plus robots.txt and /sitemap.xml. No JavaScript rendering, penetration test, Core Web Vitals, or AI-answer measurement.'}
+            'methodology': 'Technical checklist v2. Scores describe only observed checks, not overall website quality; unknown checks excluded. UI displays check counts and scope instead of a quality percentage. Single page plus robots.txt and /sitemap.xml. No JavaScript rendering, penetration test, source-code review, conversion test, Core Web Vitals, or AI-answer measurement.'}

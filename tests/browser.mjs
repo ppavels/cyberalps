@@ -42,6 +42,29 @@ try {
       await page.locator('.audit-form button').click();
       await page.locator('.audit-copy [role="alert"]').waitFor();
       assert.match(await page.locator('.audit-copy [role="alert"]').innerText(), /public HTTP/);
+      // Simulate a successful report without contacting any third-party site.
+      const auditId = 'b'.repeat(32);
+      const result = { url: 'https://example.com/review', scores: { security: 100, seo: 100, ai: 100 }, checks: [
+        { code: 'https', category: 'security', status: 'pass', evidence: 'https://example.com/review', weight: 3 },
+        { code: 'sitemap', category: 'seo', status: 'unknown', evidence: 'Timed out', weight: 1 },
+        { code: 'structured', category: 'ai', status: 'attention', evidence: 'No typed entity', weight: 2 },
+      ] };
+      await page.route('**/api/audits', route => route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ id: auditId, status: 'queued' }) }));
+      await page.route(`**/api/audits/${auditId}`, route => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ id: auditId, status: 'done', result }) }));
+      await page.locator('#url').fill('https://example.com/review');
+      await page.locator('.audit-form button').click();
+      await page.locator('#report-details').waitFor();
+      assert.equal(await page.locator('.score-number').count(), 0);
+      assert.equal(await page.locator('.check-count').count(), 3);
+      assert.match(await page.locator('.check-count').nth(1).innerText(), language === 'en' ? /1 Not checked/ : /1 Nicht geprüft/);
+      assert.equal(await page.locator('.result').first().getAttribute('class'), 'result attention');
+      await page.locator('.manual-review button').click();
+      await page.locator('dialog[open]').waitFor();
+      assert.equal(await page.locator('input[name="url"]').inputValue(), result.url);
+      assert.ok((await page.locator('textarea[name="message"]').inputValue()).length > 20);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}/${language} report overflows`);
+      await page.keyboard.press('Escape');
+      await page.screenshot({ path: `reports/${name}-${language}-report.png`, fullPage: true });
       assert.deepEqual(errors, [], `${name}/${language} JavaScript errors`);
       await context.close();
     }
