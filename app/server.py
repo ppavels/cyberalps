@@ -229,6 +229,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path.startswith('/api/'):
             return self.send(404, {'error': 'Not found.'})
+        old_pricing = re.fullmatch(r'/(de|en)/ai-development/?', path)
+        if old_pricing:
+            query = urlsplit(self.path).query
+            redirect = f'/{old_pricing.group(1)}/development-rates/'
+            if query:
+                redirect += '?' + query
+            return self.send(301, b'', extra={'Location': redirect})
         if path == '/':
             return self.send(302, b'', extra={'Location': '/de/'})
         if path == '/robots.txt':
@@ -240,7 +247,7 @@ class Handler(BaseHTTPRequestHandler):
             if not ORIGIN:
                 return self.send(503, {'error': 'Canonical domain is not configured.'})
             from html import escape
-            urls = ''.join(f'<url><loc>{escape(ORIGIN)}/{lang}/{suffix}</loc></url>' for lang in ['de', 'en'] for suffix in ['', 'ai-development/'])
+            urls = ''.join(f'<url><loc>{escape(ORIGIN)}/{lang}/{suffix}</loc></url>' for lang in ['de', 'en'] for suffix in ['', 'development-rates/'])
             return self.send(200, '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'+urls+'</urlset>', 'application/xml')
         root = (ROOT / 'dist').resolve()
         target = (root / path.lstrip('/')).resolve()
