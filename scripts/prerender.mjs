@@ -4,7 +4,7 @@ const shell = await readFile('dist/index.html', 'utf8');
 const escape = value => value.replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;');
 for (const lang of ['de','en']) {
   for (const page of ['home','privacy','terms','development']) {
-    const suffix = page === 'home' ? '' : page === 'development' ? 'ai-development/' : page + '/';
+    const suffix = page === 'home' ? '' : page === 'development' ? 'development-rates/' : page + '/';
     const path = `/${lang}/${suffix}`;
     const title = page === 'home' ? content[lang].title : page === 'development' ? developmentCopy[lang].title : `${page === 'privacy' ? content[lang].privacy : content[lang].terms} | CyberAlps`;
     const description = page === 'development' ? developmentCopy[lang].description : content[lang].description;

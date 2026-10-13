@@ -29,6 +29,23 @@ def check():
         code, headers, body = request(f'https://cyberalps.ch/{lang}/')
         assert code == 200 and text in body, 'The language page is not ready'
         assert b'__PUBLIC_ORIGIN__' not in body and b'https://cyberalps.ch/' in body
+    for lang in ('de', 'en'):
+        current = f'https://cyberalps.ch/{lang}/development-rates/'
+        code, headers, body = request(current)
+        assert code == 200 and b'<link rel="canonical" href="' + current.encode() + b'"' in body, 'Pricing page canonical mismatch'
+        assert f'https://cyberalps.ch/{lang}/ai-development/'.encode() not in body, 'Old pricing URL remains in HTML'
+        old = f'https://cyberalps.ch/{lang}/ai-development/'
+        old_request = urllib.request.Request(old, method='HEAD')
+        class NoFollow(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                return None
+        try:
+            urllib.request.build_opener(NoFollow).open(old_request, timeout=12)
+            raise AssertionError('Old URL did not redirect')
+        except urllib.error.HTTPError as error:
+            assert error.code == 301 and error.headers.get('Location') == f'/{lang}/development-rates/', 'Old pricing URL redirect mismatch'
+    code, _, sitemap = request('https://cyberalps.ch/sitemap.xml')
+    assert code == 200 and b'/de/development-rates/' in sitemap and b'/en/development-rates/' in sitemap and b'/ai-development/' not in sitemap, 'Sitemap mismatch'
     code, headers, body = request('https://cyberalps.ch/admin')
     assert code == 401, 'The request inbox must require authentication'
     print('PASS: cyberalps.ch HTTPS, exact revision, DE/EN and private inbox.', flush=True)

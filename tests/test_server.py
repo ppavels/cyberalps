@@ -83,6 +83,22 @@ class ApiTests(unittest.TestCase):
         for path in ['/admin', '/admin/', '/admin.html']:
             self.assertEqual(self.request(path)[0], 401)
 
+    def test_development_rates_redirect_and_sitemap(self):
+        for lang in ('de', 'en'):
+            old = f'/{lang}/ai-development/'
+            code, headers, _ = self.request(old)
+            self.assertEqual(code, 301)
+            self.assertEqual(headers['Location'], f'/{lang}/development-rates/')
+            code, headers, _ = self.request(old[:-1] + '?utm_source=old')
+            self.assertEqual(code, 301)
+            self.assertEqual(headers['Location'], f'/{lang}/development-rates/?utm_source=old')
+        code, _, xml = self.request('/sitemap.xml')
+        self.assertEqual(code, 200)
+        body = xml.decode()
+        self.assertIn('https://cyberalps.example/en/development-rates/', body)
+        self.assertIn('https://cyberalps.example/de/development-rates/', body)
+        self.assertNotIn('/ai-development/', body)
+
     def test_rate_limit_and_expiry(self):
         for _ in range(5): self.assertTrue(server.rate_allowed('192.0.2.1', 'audit'))
         self.assertFalse(server.rate_allowed('192.0.2.1', 'audit'))

@@ -14,7 +14,7 @@ export const budgetRates = [
 
 export const developmentCopy = {
   en: {
-    nav: 'Flexible developers',
+    nav: 'Development rates',
     title: 'Senior engineering & flexible development rates | CyberAlps',
     description: 'Senior engineering from $60/hour and affordable AI-assisted development from $25/hour. Compare development and cloud rates.',
     eyebrow: 'FLEXIBLE DEVELOPMENT',
@@ -54,7 +54,7 @@ export const developmentCopy = {
     endCta: 'Tell us what you need',
   },
   de: {
-    nav: 'Flexible Entwickler',
+    nav: 'Entwicklungstarife',
     title: 'Senior Engineering & flexible Entwicklungspreise | CyberAlps',
     description: 'Senior Engineering ab CHF 50/Stunde und KI-gestützte Routineentwicklung ab CHF 21/Stunde. Tarife in CHF und USD.',
     eyebrow: 'FLEXIBLE ENTWICKLUNG',
