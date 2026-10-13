@@ -65,6 +65,18 @@ try {
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}/${language} report overflows`);
       await page.keyboard.press('Escape');
       await page.screenshot({ path: `reports/${name}-${language}-report.png`, fullPage: true });
+      await page.goto(`http://127.0.0.1:3002/${language}/ai-development/`, { waitUntil: 'networkidle' });
+      assert.equal(await page.locator('h1').count(), 1);
+      assert.equal(await page.locator('.dev-plan-card').count(), 3);
+      assert.match(await page.title(), /CyberAlps/);
+      assert.ok((await page.locator('link[rel="canonical"]').getAttribute('href')).includes('/ai-development/'));
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}/${language} pricing overflows`);
+      await page.locator('.dev-plan-card').nth(1).getByRole('button').click();
+      await page.locator('dialog[open]').waitFor();
+      const planRequest = await page.locator('textarea[name="message"]').inputValue();
+      assert.ok(planRequest.includes('499') && planRequest.includes('25'), `${name}/${language} plan not prefilled`);
+      await page.keyboard.press('Escape');
+      await page.screenshot({ path: `reports/${name}-${language}-pricing.png`, fullPage: true });
       assert.deepEqual(errors, [], `${name}/${language} JavaScript errors`);
       await context.close();
     }
