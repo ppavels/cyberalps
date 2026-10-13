@@ -240,7 +240,7 @@ class Handler(BaseHTTPRequestHandler):
             if not ORIGIN:
                 return self.send(503, {'error': 'Canonical domain is not configured.'})
             from html import escape
-            urls = ''.join(f'<url><loc>{escape(ORIGIN)}/{lang}/</loc></url>' for lang in ['de', 'en'])
+            urls = ''.join(f'<url><loc>{escape(ORIGIN)}/{lang}/{suffix}</loc></url>' for lang in ['de', 'en'] for suffix in ['', 'ai-development/'])
             return self.send(200, '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'+urls+'</urlset>', 'application/xml')
         root = (ROOT / 'dist').resolve()
         target = (root / path.lstrip('/')).resolve()
