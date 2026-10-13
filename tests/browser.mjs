@@ -65,7 +65,7 @@ try {
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}/${language} report overflows`);
       await page.keyboard.press('Escape');
       await page.screenshot({ path: `reports/${name}-${language}-report.png`, fullPage: true });
-      await page.goto(`http://127.0.0.1:3002/${language}/ai-development/`, { waitUntil: 'networkidle' });
+      await page.goto(`http://127.0.0.1:3002/${language}/development-rates/`, { waitUntil: 'networkidle' });
       assert.equal(await page.locator('h1').count(), 1);
       assert.equal(await page.locator('.dev-plan-card').count(), 3);
       assert.equal(await page.locator('.dev-senior-card').count(), 5);
@@ -74,7 +74,10 @@ try {
       assert.match(await page.locator('.dev-senior-card').first().innerText(), language === 'de' ? /\$60/ : /CHF 50/);
       await page.locator('.dev-currency-switch button').filter({hasText: language === 'de' ? 'CHF' : 'USD'}).click();
       assert.match(await page.title(), /CyberAlps/);
-      assert.ok((await page.locator('link[rel="canonical"]').getAttribute('href')).includes('/ai-development/'));
+      assert.ok((await page.locator('link[rel="canonical"]').getAttribute('href')).includes('/development-rates/'));
+      const oldResponse = await page.request.get(`http://127.0.0.1:3002/${language}/ai-development/?utm_source=previous-link`, { maxRedirects: 0 });
+      assert.equal(oldResponse.status(), 301);
+      assert.equal(oldResponse.headers()['location'], `/${language}/development-rates/?utm_source=previous-link`);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${name}/${language} pricing overflows`);
       await page.locator('.dev-plan-card').nth(1).getByRole('button').click();
       await page.locator('dialog[open]').waitFor();
