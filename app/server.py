@@ -235,7 +235,7 @@ class Handler(BaseHTTPRequestHandler):
             redirect = f'/{old_pricing.group(1)}/development-rates/'
             if query:
                 redirect += '?' + query
-            return self.send(301, b'', extra={'Location': redirect})
+            return self.send(301, b'', 'text/plain; charset=utf-8', extra={'Location': redirect})
         if path == '/':
             return self.send(302, b'', extra={'Location': '/de/'})
         if path == '/robots.txt':
